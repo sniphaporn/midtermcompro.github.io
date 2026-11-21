@@ -33,7 +33,7 @@ window.EXAM_CONFIG = {
   closeDelay:    3,        // วินาทีนับถอยหลังก่อนยกเลิกเมื่อจับได้
   requireLogin:  true,     // true = บังคับล็อกอิน Microsoft ก่อนสอบ , false = ไม่ต้องล็อกอิน
   oneAttempt:    true,     // true = เข้าสอบได้ครั้งเดียวต่อเครื่อง (ออกแล้วเข้าซ้ำไม่ได้) , false = ปิดฟีเจอร์นี้
-  mobileRedirect: true,    // true = มือถือ/ไอแพด เปิดฟอร์มเต็มหน้า (แก้ปัญหาฟอร์มไม่แสดงใน Safari) , false = ฝังในกรอบเหมือนคอมพิวเตอร์
+  mobileRedirect: false,   // false = มือถือ/ไอแพด ฝังฟอร์มในกรอบ + ระบบคุมสอบทำงาน (แนะนำ) , true = เปิดฟอร์มเต็มหน้า (ระบบคุมสอบไม่ทำงาน)
   pin:           "T1234"    // PIN สำหรับเปิดปุ่มตั้งค่า ⚙️ (กันนักเรียนแก้)
 };
 </script>
@@ -434,9 +434,9 @@ window.EXAM_CONFIG = {
       <label>มือถือ / ไอแพด</label>
       <label class="chk-inline">
         <input type="checkbox" id="f_mobileRedirect">
-        เปิดฟอร์มเต็มหน้าบนมือถือ/ไอแพด (แก้ปัญหาฟอร์มไม่แสดง)
+        เปิดฟอร์มเต็มหน้าบนมือถือ/ไอแพด (ใช้เมื่อฟอร์มไม่แสดงในกรอบเท่านั้น)
       </label>
-      <small>Safari บน iPhone/iPad บล็อกการล็อกอินในกรอบฝัง — โหมดนี้ไม่มีตัวจับเวลา/จับการสลับแอปบนมือถือ</small>
+      <small>ปิดไว้ = ระบบคุมสอบ (จับเวลา/จับการสลับแอป) ทำงานบนมือถือ แต่ฟอร์มต้องแสดงในกรอบได้ — เปิดไว้ = ฟอร์มแสดงแน่นอน แต่ไม่มีการคุมสอบบนมือถือ</small>
     </div>
 
     <div class="row2">
@@ -523,7 +523,7 @@ const BUILTIN = {
   closeDelay:    3,
   requireLogin:  true,
   oneAttempt:    true,
-  mobileRedirect: true,
+  mobileRedirect: false,
   pin:           "T1234"
 };
 
@@ -939,6 +939,13 @@ function triggerViolation(reason) {
   violationCount++;
   console.warn("⚠️ Violation:", reason, "(#" + violationCount + ")");
   closingDown = true;
+
+  // มือถือ/ไอแพด: ยกเลิกสอบทันที ไม่รอนับถอยหลัง
+  // (ตอนหน้าถูกพักเบื้องหลัง ตัวนับเวลาของเบราว์เซอร์จะหยุด ทำให้กลับมาแล้วยังสอบต่อได้)
+  if (IS_MOBILE) {
+    forceClose(reason);
+    return;
+  }
 
   // แสดง overlay countdown
   const overlay   = document.getElementById('overlay');
