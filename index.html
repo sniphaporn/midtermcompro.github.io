@@ -31,8 +31,9 @@ window.EXAM_CONFIG = {
   teacher:       "นางสาวณิภาพร สิวิลาด | ครูผู้สอน",  // ชื่อครูผู้ออกข้อสอบ
 
   closeDelay:    3,        // วินาทีนับถอยหลังก่อนยกเลิกเมื่อจับได้
-  requireLogin:  true,     // true = บังคับล็อกอิน Google ก่อนสอบ , false = ไม่ต้องล็อกอิน
+  requireLogin:  true,     // true = บังคับล็อกอิน Microsoft ก่อนสอบ , false = ไม่ต้องล็อกอิน
   oneAttempt:    true,     // true = เข้าสอบได้ครั้งเดียวต่อเครื่อง (ออกแล้วเข้าซ้ำไม่ได้) , false = ปิดฟีเจอร์นี้
+  mobileRedirect: true,    // true = มือถือ/ไอแพด เปิดฟอร์มเต็มหน้า (แก้ปัญหาฟอร์มไม่แสดงใน Safari) , false = ฝังในกรอบเหมือนคอมพิวเตอร์
   pin:           "T1234"    // PIN สำหรับเปิดปุ่มตั้งค่า ⚙️ (กันนักเรียนแก้)
 };
 </script>
@@ -429,6 +430,15 @@ window.EXAM_CONFIG = {
       <small>จำด้วย localStorage + cookie ของเบราว์เซอร์ — ควรเปิด “หนึ่งการตอบกลับต่อบุคคล” ใน Microsoft Forms ควบคู่กัน</small>
     </div>
 
+    <div class="field">
+      <label>มือถือ / ไอแพด</label>
+      <label class="chk-inline">
+        <input type="checkbox" id="f_mobileRedirect">
+        เปิดฟอร์มเต็มหน้าบนมือถือ/ไอแพด (แก้ปัญหาฟอร์มไม่แสดง)
+      </label>
+      <small>Safari บน iPhone/iPad บล็อกการล็อกอินในกรอบฝัง — โหมดนี้ไม่มีตัวจับเวลา/จับการสลับแอปบนมือถือ</small>
+    </div>
+
     <div class="row2">
       <div class="field">
         <label>หน่วงเวลาปิด (วินาที)</label>
@@ -513,6 +523,7 @@ const BUILTIN = {
   closeDelay:    3,
   requireLogin:  true,
   oneAttempt:    true,
+  mobileRedirect: true,
   pin:           "T1234"
 };
 
@@ -578,9 +589,16 @@ function renderStart() {
 
   // ข้อความกฎการสอบ ปรับตามอุปกรณ์
   if (IS_MOBILE) {
-    set('warnBox',
-      '⚠️ <strong>กฎการสอบ:</strong> ห้ามออกจากแอปเบราว์เซอร์ระหว่างสอบ<br>' +
-      'หากสลับไปแอปอื่น เปิดแอปแจ้งเตือน หรือล็อกหน้าจอ <strong>การสอบจะถูกยกเลิกทันที</strong>');
+    if (CFG.mobileRedirect) {
+      set('warnBox',
+        '⚠️ <strong>กฎการสอบ:</strong> ระบบจะเปิดแบบฟอร์มข้อสอบเต็มหน้าจอ<br>' +
+        'ห้ามสลับไปแอปอื่นระหว่างสอบ และต้องทำให้เสร็จภายใน <strong>' + esc(CFG.examMinutes) + ' นาที</strong> ' +
+        '(เข้าสอบได้ครั้งเดียว)');
+    } else {
+      set('warnBox',
+        '⚠️ <strong>กฎการสอบ:</strong> ห้ามออกจากแอปเบราว์เซอร์ระหว่างสอบ<br>' +
+        'หากสลับไปแอปอื่น เปิดแอปแจ้งเตือน หรือล็อกหน้าจอ <strong>การสอบจะถูกยกเลิกทันที</strong>');
+    }
   } else {
     set('warnBox',
       '⚠️ <strong>กฎการสอบ:</strong> ระบบจะเปิดในโหมดเต็มจอ<br>' +
@@ -642,6 +660,7 @@ function openSettings() {
   put('f_pin',           CFG.pin);
   document.getElementById('f_requireLogin').checked = !!CFG.requireLogin;
   document.getElementById('f_oneAttempt').checked   = !!CFG.oneAttempt;
+  document.getElementById('f_mobileRedirect').checked = !!CFG.mobileRedirect;
   document.getElementById('settingsMsg').textContent = '';
   document.getElementById('settingsScreen').style.display = 'block';
 }
@@ -679,6 +698,7 @@ function saveSettings() {
     closeDelay:    num('f_closeDelay',    1, DEFAULTS.closeDelay),
     requireLogin:  document.getElementById('f_requireLogin').checked,
     oneAttempt:    document.getElementById('f_oneAttempt').checked,
+    mobileRedirect: document.getElementById('f_mobileRedirect').checked,
     pin
   };
   persistConfig();
@@ -744,6 +764,9 @@ function startExam() {
       return;
     }
   }
+  // มือถือ/ไอแพด + โหมดเปิดเต็มหน้า → ข้ามขั้นตอน Fullscreen ไปเปิดฟอร์มเลย
+  if (IS_MOBILE && CFG.mobileRedirect) { launchExam(); return; }
+
   // ขอ Fullscreen แบบ best-effort (iPhone Safari ไม่รองรับ — ข้ามได้)
   const el = document.documentElement;
   const reqFS = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen;
@@ -765,8 +788,26 @@ function startExam() {
   }
 }
 
+// URL สำหรับเปิดแบบเต็มหน้า: ตัดพารามิเตอร์ embed / embedded ออก
+function topLevelFormUrl() {
+  try {
+    const u = new URL(CFG.formUrl);
+    u.searchParams.delete('embed');
+    u.searchParams.delete('embedded');
+    return u.toString();
+  } catch (_) { return CFG.formUrl; }
+}
+
 function launchExam() {
   if (CFG.oneAttempt) markUsed();   // ใช้สิทธิ์ทันทีที่เริ่มสอบ
+
+  // มือถือ/ไอแพด: กรอบฝัง (iframe) ของ Microsoft Forms ใช้ล็อกอินไม่ได้ใน Safari
+  // (บล็อกคุกกี้ของบุคคลที่สาม) จึงเปิดฟอร์มเต็มหน้าแทน
+  if (IS_MOBILE && CFG.mobileRedirect) {
+    window.location.href = topLevelFormUrl();
+    return;
+  }
+
   secondsLeft = CFG.examMinutes * 60;
   document.getElementById('startScreen').style.display = 'none';
   document.getElementById('examFrame').src = CFG.formUrl;
